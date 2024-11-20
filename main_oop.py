@@ -35,4 +35,6 @@ def entry_point(
 def main():
     fire.Fire(entry_point)
 
-sys.exit(main())
+if __name__ == "__main__":
+    main()
+

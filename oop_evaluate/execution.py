@@ -8,7 +8,51 @@ import multiprocessing
 import platform
 import signal
 import tempfile
+import threading
 
+def unsafe_execute(problem, completion, timeout, result):
+    with create_tempdir():
+
+        # These system calls are needed when cleaning up tempdir.
+        import os
+        import shutil
+        rmtree = shutil.rmtree
+        rmdir = os.rmdir
+        chdir = os.chdir
+
+        # Disable functionalities that can make destructive changes to the test.
+        reliability_guard()
+
+        # Construct the check program and match_program.
+        check_program = (
+            completion + "\n" +
+            problem["test"] + "\n" +
+            f"check({problem['entry_point']})"
+        )
+        completion_revise = repr(completion)
+        run_result = f"str_content = {completion_revise}"
+        match_program = (
+            run_result + "\n" +
+            problem["test_rulematch"] + "\n" +
+            "check(matching_function)"
+        )
+        try:
+            exec_globals = {}
+            exec_rulematch = {}
+            with swallow_io():
+                with time_limit(timeout):
+                    exec(check_program, exec_globals)
+                    exec(match_program, exec_rulematch)
+            result.append("passed")
+        except TimeoutException:
+            result.append("timed out")
+        except BaseException as e:
+            result.append(f"failed: {e}")
+
+        # Needed for cleaning up.
+        shutil.rmtree = rmtree
+        os.rmdir = rmdir
+        os.chdir = chdir
 
 def check_correctness(problem: Dict, completion: str, timeout: float,
                       completion_id: Optional[int] = None) -> Dict:
@@ -20,55 +64,12 @@ def check_correctness(problem: Dict, completion: str, timeout: float,
         the results later even if execution finishes asynchronously.
     """
 
-    def unsafe_execute():
 
-        with create_tempdir():
-
-            # These system calls are needed when cleaning up tempdir.
-            import os
-            import shutil
-            rmtree = shutil.rmtree
-            rmdir = os.rmdir
-            chdir = os.chdir
-
-            # Disable functionalities that can make destructive changes to the test.
-            reliability_guard()
-
-            # Construct the check program and match_program.
-            check_program = (
-                completion + "\n" +
-                problem["test"] + "\n" +
-                f"check({problem['entry_point']})"
-            )
-            completion_revise = repr(completion)
-            run_result = f"str_content = {completion_revise}"
-            match_program = (
-                run_result + "\n" +
-                problem["test_rulematch"] + "\n" +
-                "check(matching_function)"
-            )
-            try:
-                exec_globals = {}
-                exec_rulematch = {}
-                with swallow_io():
-                    with time_limit(timeout):
-                        exec(check_program, exec_globals)
-                        exec(match_program, exec_rulematch)
-                result.append("passed")
-            except TimeoutException:
-                result.append("timed out")
-            except BaseException as e:
-                result.append(f"failed: {e}")
-
-            # Needed for cleaning up.
-            shutil.rmtree = rmtree
-            os.rmdir = rmdir
-            os.chdir = chdir
 
     manager = multiprocessing.Manager()
     result = manager.list()
 
-    p = multiprocessing.Process(target=unsafe_execute)
+    p = multiprocessing.Process(target=unsafe_execute, args=(problem, completion, timeout, result))
     p.start()
     p.join(timeout=timeout + 1)
     if p.is_alive():
@@ -86,14 +87,15 @@ def check_correctness(problem: Dict, completion: str, timeout: float,
 
 @contextlib.contextmanager
 def time_limit(seconds: float):
-    def signal_handler(signum, frame):
+    def signal_handler():
         raise TimeoutException("Timed out!")
-    signal.setitimer(signal.ITIMER_REAL, seconds)
-    signal.signal(signal.SIGALRM, signal_handler)
+
+    timer = threading.Timer(seconds, signal_handler)
+    timer.start()
     try:
         yield
     finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
+        timer.cancel()
 
 
 @contextlib.contextmanager
