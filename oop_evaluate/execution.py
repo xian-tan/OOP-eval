@@ -10,6 +10,12 @@ import signal
 import tempfile
 import threading
 
+import logging
+
+# 配置日志记录器
+logging.basicConfig(filename='execution.log', level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 def unsafe_execute(problem, completion, timeout, result):
     with create_tempdir():
 
@@ -29,6 +35,8 @@ def unsafe_execute(problem, completion, timeout, result):
             problem["test"] + "\n" +
             f"check({problem['entry_point']})"
         )
+        # 将 check_program 保存到日志文件中
+        logger.info(f"Generated check_program:\n%s", check_program)
         completion_revise = repr(completion)
         run_result = f"str_content = {completion_revise}"
         match_program = (

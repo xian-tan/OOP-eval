@@ -14,7 +14,7 @@ def save_json(data, file):
 
 def entry_point(
     sample_file: str,
-    k: str = "1,2",
+    k: str = "1",
     n_workers: int = 4,
     timeout: float = 3.0,
     problem_file: str = OOP_EVAL,
@@ -27,7 +27,7 @@ def entry_point(
     results = evaluate_functional_correctness(sample_file, k, n_workers, timeout, problem_file)
     code_result = dict({"OOP": results})
     print(sample_file)
-    file_path = os.path.join(sample_file.split('/result')[0], 'OOP_result.json')
+    file_path = os.path.join(sample_file.split('/result')[0], 'OOP_result_difficulty.json')
     save_json(code_result,file_path)
     
     print("results is", results)
